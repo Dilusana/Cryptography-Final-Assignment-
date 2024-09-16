@@ -1,0 +1,110 @@
+# Define Block and Key Sizes
+block_size = 8
+key_size = 8
+
+# 4x4 S-box (Substitution box)
+S_BOX = {
+    0b0000: 0b1110, 0b0001: 0b0100, 0b0010: 0b1101, 0b0011: 0b0001,
+    0b0100: 0b0010, 0b0101: 0b1111, 0b0110: 0b1011, 0b0111: 0b1000,
+    0b1000: 0b0011, 0b1001: 0b1010, 0b1010: 0b0110, 0b1011: 0b1100,
+    0b1100: 0b0101, 0b1101: 0b1001, 0b1110: 0b0000, 0b1111: 0b0111
+}
+
+# Function to substitute 4-bit values using the S-box
+def substitute_4bits(input_4bits):
+    return S_BOX[input_4bits]
+
+# Function to permute an 8-bit block
+def permute_8bits(input_8bits):
+    # Permutation table based on bit positions
+    permutation_table = [2, 4, 6, 8, 1, 3, 5, 7]
+    
+    # Shift bits based on the table
+    permuted_output = 0
+    for i, pos in enumerate(permutation_table):
+        # Extract the bit at the given position
+        bit = (input_8bits >> (8 - pos)) & 1
+        # Place the bit in the correct position
+        permuted_output |= (bit << (7 - i))
+    
+    return permuted_output
+
+# Feistel function: XOR right half with the key
+def feistel_function(right_half, key):
+    return right_half ^ (key & 0xF)  # Use lower 4 bits of the key for Feistel function
+
+# Function to encrypt an 8-bit block using S-box, permutation, and Feistel function
+def encrypt_block(block, key):
+    # Split block into two halves: left and right (4 bits each)
+    left_half = (block >> 4) & 0xF
+    right_half = block & 0xF
+    
+    # Feistel function: Right XOR key, then swap halves
+    new_right_half = left_half ^ feistel_function(right_half, key)
+    
+    # Substitution: Apply S-box substitution to both halves
+    substituted_left_half = substitute_4bits(new_right_half)
+    substituted_right_half = substitute_4bits(right_half)
+    
+    # Combine halves after substitution
+    substituted_block = (substituted_left_half << 4) | substituted_right_half
+    
+    # Permutation: Apply permutation to the combined block
+    encrypted_block = permute_8bits(substituted_block)
+    
+    return encrypted_block
+
+# XOR Function to XOR two blocks (used in CTR mode)
+def xor_blocks(block1, block2):
+    return block1 ^ block2
+
+# Function to increment a counter for CTR mode
+def increment_counter(counter, block_size):
+    return (counter + 1) % (1 << block_size)  # Ensure counter fits within the block size
+
+# Function to encrypt/decrypt data using CTR mode
+def ctr_encrypt_decrypt(plaintext, key, nonce):
+    ciphertext = []
+    counter = nonce  # Initialize the counter with the nonce
+    
+    for block in plaintext:
+        # Encrypt the counter
+        encrypted_counter = encrypt_block(counter, key)
+        
+        # XOR the encrypted counter with the plaintext block
+        xor_result = xor_blocks(block, encrypted_counter)
+        
+        # Append the XOR result to the ciphertext
+        ciphertext.append(xor_result)
+        
+        # Increment the counter for the next block
+        counter = increment_counter(counter, block_size)
+    
+    return ciphertext
+
+# Example Usage for both Block Encryption and CTR Mode
+if __name__ == "__main__":
+    # Example 8-bit plaintext block and 8-bit key for block encryption
+    plaintext_block = 0b10101010  # Example plaintext
+    encryption_key = 0b11001010  # Example key
+
+    # Encrypt the block
+    encrypted_block = encrypt_block(plaintext_block, encryption_key)
+    
+    # Print the result
+    print(f"Plaintext Block:  {bin(plaintext_block)}")
+    print(f"Encryption Key:   {bin(encryption_key)}")
+    print(f"Encrypted Block:  {bin(encrypted_block)}")
+    
+    # Example for CTR Mode
+    # Example plaintext represented as an array of 8-bit blocks
+    plaintext_blocks = [0b10101010, 0b11001100, 0b11110000]  # Example plaintext
+    nonce = 0b00001111  # Example nonce (initial counter value)
+    
+    # Encrypt using CTR mode
+    ctr_encrypted = ctr_encrypt_decrypt(plaintext_blocks, encryption_key, nonce)
+    print(f"CTR Encrypted: {[bin(block) for block in ctr_encrypted]}")
+    
+    # Decrypt using CTR mode (same process as encryption)
+    ctr_decrypted = ctr_encrypt_decrypt(ctr_encrypted, encryption_key, nonce)
+    print(f"CTR Decrypted: {[bin(block) for block in ctr_decrypted]}")
